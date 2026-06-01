@@ -72,6 +72,51 @@ describe("LLMRouter", () => {
   });
 
   describe("routing", () => {
+    it("should connect abort signal to standard LLM requests", async () => {
+      const controller = new AbortController();
+      fetchSpy.mockImplementationOnce((_url, options) => {
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        });
+      });
+
+      const router = new LLMRouter(baseConfig);
+      const request = router.complete([{ role: "user", content: "test" }], undefined, controller.signal);
+
+      const [, options] = fetchSpy.mock.calls[0];
+      controller.abort();
+      expect(options.signal.aborted).toBe(true);
+      await expect(request).rejects.toThrow("LLM 请求已取消");
+    });
+
+    it("should connect abort signal to tool-enabled LLM requests", async () => {
+      const controller = new AbortController();
+      fetchSpy.mockImplementationOnce((_url, options) => {
+        return new Promise((_resolve, reject) => {
+          options.signal.addEventListener("abort", () => {
+            reject(new DOMException("Aborted", "AbortError"));
+          });
+        });
+      });
+
+      const router = new LLMRouter(baseConfig);
+      const request = router.completeWithTools(
+        [{ role: "user", content: "test" }],
+        [],
+        async () => "unused",
+        undefined,
+        1,
+        controller.signal,
+      );
+
+      const [, options] = fetchSpy.mock.calls[0];
+      controller.abort();
+      expect(options.signal.aborted).toBe(true);
+      await expect(request).rejects.toThrow("LLM 请求已取消");
+    });
+
     it("should route minimax to Anthropic messages endpoint", async () => {
       const config: LLMProviderConfig = {
         name: "minimax",

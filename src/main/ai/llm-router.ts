@@ -123,14 +123,15 @@ export class LLMRouter {
   async complete(
     messages: ChatMessage[],
     onChunk?: (chunk: string) => void,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     if (this.config.name === "anthropic" || this.config.name === "minimax") {
-      return this.completeAnthropic(messages, onChunk);
+      return this.completeAnthropic(messages, onChunk, signal);
     }
     if (this.config.apiType === "responses") {
-      return this.completeResponses(messages, onChunk);
+      return this.completeResponses(messages, onChunk, signal);
     }
-    return this.completeOpenAI(messages, onChunk);
+    return this.completeOpenAI(messages, onChunk, signal);
   }
 
   /**
@@ -146,12 +147,12 @@ export class LLMRouter {
     signal?: AbortSignal,
   ): Promise<LLMResponse> {
     if (this.config.name === "anthropic" || this.config.name === "minimax") {
-      return this.agenticLoopAnthropic(messages, tools, callTool, onChunk, maxRounds);
+      return this.agenticLoopAnthropic(messages, tools, callTool, onChunk, maxRounds, signal);
     }
     if (this.config.apiType === "responses") {
-      return this.agenticLoopResponses(messages, tools, callTool, onChunk, maxRounds);
+      return this.agenticLoopResponses(messages, tools, callTool, onChunk, maxRounds, signal);
     }
-    return this.agenticLoopOpenAI(messages, tools, callTool, onChunk, maxRounds);
+    return this.agenticLoopOpenAI(messages, tools, callTool, onChunk, maxRounds, signal);
   }
 
   // ---- Agentic Loop: OpenAI / Custom ----
@@ -162,6 +163,7 @@ export class LLMRouter {
     callTool: (name: string, args: Record<string, unknown>) => Promise<string>,
     onChunk?: (chunk: string) => void,
     maxRounds = 10,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     const openaiTools = tools.map((t) => ({
       type: "function" as const,
@@ -192,6 +194,7 @@ export class LLMRouter {
         stream: false,
       };
 
+      signal?.throwIfAborted();
       const response = await this.fetchWithRetry(url, {
         method: "POST",
         headers: {
@@ -199,7 +202,7 @@ export class LLMRouter {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(sanitizeForJson(body)),
-      }, 1, false);
+      }, 1, false, signal);
 
       const data = await this.safeParseJson<{
         choices: Array<{
@@ -268,7 +271,7 @@ export class LLMRouter {
     }
 
     // Max rounds exceeded — do final call without tools to force text response
-    return this.complete(history, onChunk);
+    return this.complete(history, onChunk, signal);
   }
 
   // ---- Agentic Loop: Anthropic ----
@@ -279,6 +282,7 @@ export class LLMRouter {
     callTool: (name: string, args: Record<string, unknown>) => Promise<string>,
     onChunk?: (chunk: string) => void,
     maxRounds = 10,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     const anthropicTools = tools.map((t) => ({
       name: t.name,
@@ -306,6 +310,7 @@ export class LLMRouter {
       };
       if (systemMsg) body.system = systemMsg.content;
 
+      signal?.throwIfAborted();
       const response = await this.fetchWithRetry(url, {
         method: "POST",
         headers: {
@@ -314,7 +319,7 @@ export class LLMRouter {
           "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify(sanitizeForJson(body)),
-      }, 1, false);
+      }, 1, false, signal);
 
       const data = await this.safeParseJson<{
         content: AnthropicContentBlock[];
@@ -376,7 +381,7 @@ export class LLMRouter {
     }
 
     // Max rounds exceeded — final call without tools
-    return this.complete(messages, onChunk);
+    return this.complete(messages, onChunk, signal);
   }
 
   // ---- Agentic Loop: OpenAI Responses API ----
@@ -387,6 +392,7 @@ export class LLMRouter {
     callTool: (name: string, args: Record<string, unknown>) => Promise<string>,
     onChunk?: (chunk: string) => void,
     maxRounds = 10,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     const responsesTools = tools.map((t) => ({
       type: "function" as const,
@@ -414,6 +420,7 @@ export class LLMRouter {
       };
       if (systemMsg) body.instructions = systemMsg.content;
 
+      signal?.throwIfAborted();
       const response = await this.fetchWithRetry(url, {
         method: "POST",
         headers: {
@@ -421,7 +428,7 @@ export class LLMRouter {
           Authorization: `Bearer ${this.config.apiKey}`,
         },
         body: JSON.stringify(sanitizeForJson(body)),
-      }, 1, false);
+      }, 1, false, signal);
 
       const data = await this.safeParseJson<{
         output: Array<{
@@ -497,12 +504,13 @@ export class LLMRouter {
     }
 
     // Max rounds exceeded — do final call without tools
-    return this.completeResponses(messages, onChunk);
+    return this.completeResponses(messages, onChunk, signal);
   }
 
   private async completeOpenAI(
     messages: ChatMessage[],
     onChunk?: (chunk: string) => void,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     const url = `${this.config.baseUrl.replace(/\/$/, "")}/chat/completions`;
     const stream = !!onChunk;
@@ -520,7 +528,7 @@ export class LLMRouter {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify(sanitizeForJson(body)),
-    }, 1, stream);
+    }, 1, stream, signal);
 
     if (stream) return this.parseOpenAIStream(response, onChunk!);
 
@@ -538,6 +546,7 @@ export class LLMRouter {
   private async completeResponses(
     messages: ChatMessage[],
     onChunk?: (chunk: string) => void,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     const url = `${this.config.baseUrl.replace(/\/$/, "")}/responses`;
     const stream = !!onChunk;
@@ -560,7 +569,7 @@ export class LLMRouter {
         Authorization: `Bearer ${this.config.apiKey}`,
       },
       body: JSON.stringify(sanitizeForJson(body)),
-    }, 1, stream);
+    }, 1, stream, signal);
 
     if (stream) return this.parseResponsesStream(response, onChunk!);
 
@@ -583,6 +592,7 @@ export class LLMRouter {
   private async completeAnthropic(
     messages: ChatMessage[],
     onChunk?: (chunk: string) => void,
+    signal?: AbortSignal,
   ): Promise<LLMResponse> {
     const url = `${this.config.baseUrl.replace(/\/$/, "")}/messages`;
     const stream = !!onChunk;
@@ -606,7 +616,7 @@ export class LLMRouter {
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(sanitizeForJson(body)),
-    }, 1, stream);
+    }, 1, stream, signal);
 
     if (stream) return this.parseAnthropicStream(response, onChunk!);
 
@@ -795,8 +805,16 @@ export class LLMRouter {
     options: RequestInit,
     retries = 1,
     isStreaming = false,
+    signal?: AbortSignal,
   ): Promise<Response> {
     const controller = new AbortController();
+    let abortedBySignal = false;
+    const abortFromSignal = (): void => {
+      abortedBySignal = true;
+      controller.abort(signal?.reason);
+    };
+    if (signal?.aborted) abortFromSignal();
+    signal?.addEventListener("abort", abortFromSignal, { once: true });
     const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);
     const startTime = Date.now();
 
@@ -821,7 +839,7 @@ export class LLMRouter {
           10,
         );
         await new Promise((r) => setTimeout(r, retryAfter * 1000));
-        return this.fetchWithRetry(url, options, retries - 1, isStreaming);
+        return this.fetchWithRetry(url, options, retries - 1, isStreaming, signal);
       }
 
       if (!response.ok) {
@@ -894,7 +912,9 @@ export class LLMRouter {
       }
 
       // Network-level error — log it
-      const diagMsg = this.diagnoseNetworkError(err as Error, url);
+      const diagMsg = abortedBySignal
+        ? "LLM 请求已取消"
+        : this.diagnoseNetworkError(err as Error, url);
       this.onRequestComplete?.({
         request_url: url,
         request_method: (options.method ?? 'POST').toUpperCase(),
@@ -908,6 +928,8 @@ export class LLMRouter {
       });
 
       throw new Error(diagMsg);
+    } finally {
+      signal?.removeEventListener("abort", abortFromSignal);
     }
   }
 
