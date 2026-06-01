@@ -731,6 +731,23 @@ export class LLMRouter {
     if (!reader) throw new Error("No response body");
     const decoder = new TextDecoder();
     let buffer = "";
+    const processLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data: ")) return;
+      try {
+        const parsed = JSON.parse(trimmed.slice(6)) as any;
+        if (parsed.type === "content_block_delta" && parsed.delta?.text) {
+          fullContent += parsed.delta.text;
+          onChunk(parsed.delta.text);
+        }
+        if (parsed.type === "message_start" && parsed.message?.usage)
+          promptTokens = parsed.message.usage.input_tokens;
+        if (parsed.type === "message_delta" && parsed.usage)
+          completionTokens = parsed.usage.output_tokens || 0;
+      } catch {
+        /* skip */
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -738,24 +755,9 @@ export class LLMRouter {
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith("data: ")) continue;
-        try {
-          const parsed = JSON.parse(trimmed.slice(6)) as any;
-          if (parsed.type === "content_block_delta" && parsed.delta?.text) {
-            fullContent += parsed.delta.text;
-            onChunk(parsed.delta.text);
-          }
-          if (parsed.type === "message_start" && parsed.message?.usage)
-            promptTokens = parsed.message.usage.input_tokens;
-          if (parsed.type === "message_delta" && parsed.usage)
-            completionTokens = parsed.usage.output_tokens || 0;
-        } catch {
-          /* skip */
-        }
-      }
+      for (const line of lines) processLine(line);
     }
+    if (buffer) processLine(buffer);
     return { content: fullContent, promptTokens, completionTokens };
   }
 

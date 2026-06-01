@@ -366,4 +366,33 @@ describe("LLMRouter", () => {
       expect(result.content).toBe("final chat chunk");
     });
   });
+
+  describe("completeAnthropic - streaming", () => {
+    it("should parse the final SSE line when the stream has no trailing newline", async () => {
+      const config: LLMProviderConfig = {
+        name: "minimax",
+        baseUrl: "https://api.minimax.io/anthropic/v1",
+        apiKey: "test-minimax-key",
+        model: "MiniMax-M2.7",
+        maxTokens: 4096,
+      };
+      fetchSpy.mockResolvedValueOnce(
+        createRawSSEResponse(
+          [
+            'data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"final anthropic chunk"}}',
+          ].join("\n"),
+        ),
+      );
+
+      const router = new LLMRouter(config);
+      const chunks: string[] = [];
+      const result = await router.complete(
+        [{ role: "user", content: "test" }],
+        (chunk) => chunks.push(chunk),
+      );
+
+      expect(chunks).toEqual(["final anthropic chunk"]);
+      expect(result.content).toBe("final anthropic chunk");
+    });
+  });
 });
