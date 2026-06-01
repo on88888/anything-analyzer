@@ -29,6 +29,20 @@ function createSSEResponse(
   });
 }
 
+function createRawSSEResponse(body: string): Response {
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(encoder.encode(body));
+      controller.close();
+    },
+  });
+  return new Response(stream, {
+    status: 200,
+    headers: { "content-type": "text/event-stream" },
+  });
+}
+
 // Helper: create a mock JSON Response
 function createJSONResponse(body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -288,6 +302,28 @@ describe("LLMRouter", () => {
       const [, options] = fetchSpy.mock.calls[0];
       const body = JSON.parse(options.body);
       expect(body.stream).toBe(true);
+    });
+
+    it("should parse the final SSE line when the stream has no trailing newline", async () => {
+      const config: LLMProviderConfig = { ...baseConfig, apiType: "responses" };
+      fetchSpy.mockResolvedValueOnce(
+        createRawSSEResponse(
+          [
+            'event: response.output_text.delta',
+            'data: {"delta":"final chunk"}',
+          ].join("\n"),
+        ),
+      );
+
+      const router = new LLMRouter(config);
+      const chunks: string[] = [];
+      const result = await router.complete(
+        [{ role: "user", content: "test" }],
+        (chunk) => chunks.push(chunk),
+      );
+
+      expect(chunks).toEqual(["final chunk"]);
+      expect(result.content).toBe("final chunk");
     });
 
     it("should reject when Responses API stream emits a failure event", async () => {

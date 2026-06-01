@@ -673,6 +673,38 @@ export class LLMRouter {
     const decoder = new TextDecoder();
     let buffer = "";
     let currentEvent = "";
+    const processLine = (line: string): void => {
+      const trimmed = line.trim();
+      if (!trimmed) {
+        currentEvent = "";
+        return;
+      }
+      if (trimmed.startsWith("event: ")) {
+        currentEvent = trimmed.slice(7);
+        return;
+      }
+      if (!trimmed.startsWith("data: ")) return;
+      let parsed: any;
+      try {
+        parsed = JSON.parse(trimmed.slice(6)) as any;
+      } catch {
+        /* skip malformed JSON */
+        return;
+      }
+      if (currentEvent === "response.output_text.delta" && parsed.delta) {
+        fullContent += parsed.delta;
+        onChunk(parsed.delta);
+      }
+      if (currentEvent === "response.completed" && parsed.response?.usage) {
+        promptTokens = parsed.response.usage.input_tokens || 0;
+        completionTokens = parsed.response.usage.output_tokens || 0;
+      }
+      if (currentEvent === "error" || currentEvent === "response.failed") {
+        const errorMsg =
+          parsed.message || parsed.error?.message || "Unknown stream error";
+        throw new Error(`Responses API stream error: ${errorMsg}`);
+      }
+    };
 
     while (true) {
       const { done, value } = await reader.read();
@@ -680,39 +712,9 @@ export class LLMRouter {
       buffer += decoder.decode(value, { stream: true });
       const lines = buffer.split("\n");
       buffer = lines.pop() || "";
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed) {
-          currentEvent = "";
-          continue;
-        }
-        if (trimmed.startsWith("event: ")) {
-          currentEvent = trimmed.slice(7);
-          continue;
-        }
-        if (!trimmed.startsWith("data: ")) continue;
-        let parsed: any;
-        try {
-          parsed = JSON.parse(trimmed.slice(6)) as any;
-        } catch {
-          /* skip malformed JSON */
-          continue;
-        }
-        if (currentEvent === "response.output_text.delta" && parsed.delta) {
-          fullContent += parsed.delta;
-          onChunk(parsed.delta);
-        }
-        if (currentEvent === "response.completed" && parsed.response?.usage) {
-          promptTokens = parsed.response.usage.input_tokens || 0;
-          completionTokens = parsed.response.usage.output_tokens || 0;
-        }
-        if (currentEvent === "error" || currentEvent === "response.failed") {
-          const errorMsg =
-            parsed.message || parsed.error?.message || "Unknown stream error";
-          throw new Error(`Responses API stream error: ${errorMsg}`);
-        }
-      }
+      for (const line of lines) processLine(line);
     }
+    if (buffer) processLine(buffer);
     return { content: fullContent, promptTokens, completionTokens };
   }
 
