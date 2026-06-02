@@ -105,6 +105,22 @@ function readStreamTextDelta(
   throw new Error(`${providerName} stream error: ${fieldName} must be a string`);
 }
 
+function readAnthropicTextContent(data: {
+  content: Array<{ type: string; text?: unknown }>;
+}): string {
+  const textBlocks = data.content.filter((block) => block.type === "text");
+  if (textBlocks.some((block) => typeof block.text !== "string")) {
+    throw new Error(`LLM 响应格式异常: text content 必须是字符串 — ${JSON.stringify(data).slice(0, 200)}`);
+  }
+
+  const content = textBlocks.map((block) => block.text as string).join("");
+  if (content.length === 0) {
+    throw new Error(`LLM 响应格式异常: 缺少 text content 字段 — ${JSON.stringify(data).slice(0, 200)}`);
+  }
+
+  return content;
+}
+
 /**
  * Sanitize string content in LLM request body to remove control characters
  * that may break JSON parsing in intermediate proxies.
@@ -457,14 +473,7 @@ export class LLMRouter {
       }
 
       // No tool use → extract text content as final answer
-      const textContent = data.content
-        .filter((b): b is AnthropicTextBlock => b.type === "text")
-        .map((b) => b.text)
-        .join("");
-
-      if (textContent.length === 0) {
-        throw new Error(`LLM 响应格式异常: 缺少 text content 字段 — ${JSON.stringify(data).slice(0, 200)}`);
-      }
+      const textContent = readAnthropicTextContent(data);
       if (onChunk && textContent) onChunk(textContent);
       return {
         content: textContent,
@@ -730,13 +739,7 @@ export class LLMRouter {
     if (!Array.isArray(data.content)) {
       throw new Error(`LLM 响应格式异常: 缺少 content 字段 — ${JSON.stringify(data).slice(0, 200)}`);
     }
-    const content = data.content
-      .filter((c) => c.type === "text")
-      .map((c) => c.text)
-      .join("");
-    if (content.length === 0) {
-      throw new Error(`LLM 响应格式异常: 缺少 text content 字段 — ${JSON.stringify(data).slice(0, 200)}`);
-    }
+    const content = readAnthropicTextContent(data);
     return {
       content,
       promptTokens: data.usage?.input_tokens || 0,
