@@ -436,6 +436,9 @@ export class LLMRouter {
         .map((b) => b.text)
         .join("");
 
+      if (textContent.length === 0) {
+        throw new Error(`LLM 响应格式异常: 缺少 text content 字段 — ${JSON.stringify(data).slice(0, 200)}`);
+      }
       if (onChunk && textContent) onChunk(textContent);
       return {
         content: textContent,

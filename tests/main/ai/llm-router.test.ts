@@ -518,6 +518,37 @@ describe("LLMRouter", () => {
     });
   });
 
+  describe("completeWithTools - Anthropic", () => {
+    it("should reject final Anthropic tool loop responses without text content", async () => {
+      const config: LLMProviderConfig = {
+        name: "minimax",
+        baseUrl: "https://api.minimax.io/anthropic/v1",
+        apiKey: "test-minimax-key",
+        model: "MiniMax-M2.7-highspeed",
+        maxTokens: 4096,
+      };
+      fetchSpy.mockResolvedValueOnce(
+        createJSONResponse({
+          content: [{ type: "tool_use", id: "call-1", name: "lookup", input: {} }],
+        }),
+      ).mockResolvedValueOnce(
+        createJSONResponse({
+          content: [{ type: "thinking", text: "internal" }],
+        }),
+      );
+
+      const router = new LLMRouter(config);
+
+      await expect(
+        router.completeWithTools(
+          [{ role: "user", content: "hello" }],
+          [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }],
+          async () => "tool result",
+        ),
+      ).rejects.toThrow("LLM 响应格式异常: 缺少 text content 字段");
+    });
+  });
+
   describe("completeResponses - streaming", () => {
     it("should parse SSE events with event: prefix and call onChunk", async () => {
       const config: LLMProviderConfig = { ...baseConfig, apiType: "responses" };
