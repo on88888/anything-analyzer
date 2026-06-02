@@ -7,6 +7,17 @@ function readWorkspaceFile(relativePath: string): string {
 }
 
 describe("macOS 发布工作流", () => {
+  it("应该使用 Node 24 运行时兼容的 Actions 主版本", () => {
+    const workflow = readWorkspaceFile(".github/workflows/build.yml");
+
+    expect(workflow).toContain("uses: actions/checkout@v6");
+    expect(workflow).toContain("uses: pnpm/action-setup@v6");
+    expect(workflow).toContain("uses: actions/setup-node@v6");
+    expect(workflow).toContain("uses: actions/upload-artifact@v7");
+    expect(workflow).toContain("uses: actions/download-artifact@v6");
+    expect(workflow).toContain("uses: softprops/action-gh-release@v3");
+  });
+
   it("应该在同一个 macOS 构建中产出 x64 和 arm64 更新元数据", () => {
     const workflow = readWorkspaceFile(".github/workflows/build.yml");
 
