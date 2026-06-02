@@ -346,6 +346,8 @@ export class LLMRouter {
         }
 
         for (const tc of assistantMsg.tool_calls) {
+          if (!tc.id) throw new Error("tool_call missing id");
+          if (!tc.function?.name) throw new Error("tool_call missing name");
           if (typeof tc.function?.arguments !== "string") throw new Error("tool_call arguments must be a string");
           let result: string;
           try {
