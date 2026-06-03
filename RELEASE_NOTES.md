@@ -1,16 +1,16 @@
-# Anything Analyzer v3.6.47
+# Anything Analyzer v3.6.48
 
 ## 修复
 
-- **工具调用空参数校验** — 拒绝 OpenAI Chat Completions 与 Responses API 返回的空字符串工具参数
-  - OpenAI tool_call arguments 为空字符串时不再被当作空对象执行
-  - Responses API function_call arguments 为空字符串时会在入站协议边界报错
+- **OpenAI 工具轮次响应校验** — 拒绝缺少 assistant message 的 OpenAI Chat Completions 工具调用响应
+  - 工具调用轮次缺少 message 字段时不再退化为原生运行时异常
+  - 现在会在入站协议边界返回明确的 LLM 响应格式异常
 
 ## 下载
 
 | 平台 | 文件 |
 |------|------|
-| Windows | Anything-Analyzer-Setup-3.6.47.exe |
-| macOS (Apple Silicon) | Anything-Analyzer-3.6.47-arm64.dmg |
-| macOS (Intel) | Anything-Analyzer-3.6.47-x64.dmg |
-| Linux | Anything-Analyzer-3.6.47.AppImage |
+| Windows | Anything-Analyzer-Setup-3.6.48.exe |
+| macOS (Apple Silicon) | Anything-Analyzer-3.6.48-arm64.dmg |
+| macOS (Intel) | Anything-Analyzer-3.6.48-x64.dmg |
+| Linux | Anything-Analyzer-3.6.48.AppImage |

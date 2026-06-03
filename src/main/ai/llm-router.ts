@@ -344,6 +344,9 @@ export class LLMRouter {
       if (!choice) throw new Error("No response from LLM");
 
       const assistantMsg = choice.message;
+      if (!isRecord(assistantMsg)) {
+        throw new Error(`LLM 响应格式异常: 缺少 message 字段 — ${JSON.stringify(data).slice(0, 200)}`);
+      }
 
       // Has tool calls → execute and continue loop
       if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {

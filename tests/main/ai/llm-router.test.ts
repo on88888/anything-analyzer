@@ -710,6 +710,24 @@ describe("LLMRouter", () => {
   });
 
   describe("completeWithTools - OpenAI", () => {
+    it("should reject OpenAI tool rounds without assistant messages", async () => {
+      fetchSpy.mockResolvedValueOnce(
+        createJSONResponse({
+          choices: [{ finish_reason: "tool_calls" }],
+        }),
+      );
+
+      const router = new LLMRouter(baseConfig);
+
+      await expect(
+        router.completeWithTools(
+          [{ role: "user", content: "test" }],
+          [{ name: "lookup", description: "Lookup", inputSchema: { type: "object" } }],
+          async () => "unused",
+        ),
+      ).rejects.toThrow("LLM 响应格式异常: 缺少 message 字段");
+    });
+
     it("should reject OpenAI tool calls without ids", async () => {
       fetchSpy.mockResolvedValueOnce(
         createJSONResponse({
